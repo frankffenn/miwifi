@@ -18,6 +18,7 @@ var (
 type MiWifi struct {
 	DeviceID   string
 	ClientInfo string
+	Proxy      string
 }
 
 func NewMiWifi() *MiWifi {
@@ -36,9 +37,13 @@ type Response struct {
 	Message string `json:"msg"`
 }
 
-func (m *MiWifi) Init() (*Sns, error) {
+func (m *MiWifi) SetProxy(proxy string) {
+	m.Proxy = proxy
+}
+
+func (m *MiWifi) init() (*Sns, error) {
 	log.Println("[HTTP]", "GET", SnsInit)
-	resp, err := HTTPGet(SnsInit)
+	resp, err := m.doRequest(SnsInit)
 	if err != nil {
 		return nil, err
 	}
@@ -54,20 +59,20 @@ func (m *MiWifi) Init() (*Sns, error) {
 	return &out, nil
 }
 
-func (m *MiWifi) ProtalConfig(deviceId, clientInfo string) error {
+func (m *MiWifi) protalConfig(deviceId, clientInfo string) error {
 	times := time.Now().Unix() - 2000
 	log.Println("[HTTP]", "GET", fmt.Sprintf(ProtalConfig, times, deviceId, clientInfo, times+2))
-	_, err := HTTPGet(fmt.Sprintf(ProtalConfig, times, deviceId, clientInfo, times+2))
+	_, err := m.doRequest(fmt.Sprintf(ProtalConfig, times, deviceId, clientInfo, times+2))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (m *MiWifi) Apply(deviceId, clientInfo string) (*Response, error) {
+func (m *MiWifi) apply(deviceId, clientInfo string) (*Response, error) {
 	times := time.Now().Unix() - 2000
 	log.Println("[HTTP]", "GET", fmt.Sprintf(ApplyRent, deviceId, clientInfo, times))
-	resp, err := HTTPGet(fmt.Sprintf(ApplyRent, deviceId, clientInfo, times))
+	resp, err := m.doRequest(fmt.Sprintf(ApplyRent, deviceId, clientInfo, times))
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +84,34 @@ func (m *MiWifi) Apply(deviceId, clientInfo string) (*Response, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (m *MiWifi) doRequest(url string) ([]byte, error) {
+	if m.Proxy == "" {
+		return HTTPGet(url)
+	}
+	return HTTPGetWithProxy(url, m.Proxy)
+}
+
+func (m *MiWifi) Call() (*Response, error) {
+	sns, err := m.init()
+	if err != nil {
+		log.Println("sns_init error", "err", err)
+		return nil, err
+	}
+
+	if err := m.protalConfig(sns.DeviceID, sns.ClientInfo); err != nil {
+		log.Println("protal config error", "err", err)
+		return nil, err
+	}
+
+	resp, err := m.apply(sns.DeviceID, sns.ClientInfo)
+	if err != nil {
+		log.Println("apply rent error", "err", err)
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (m *MiWifi) KeepAlive() {
